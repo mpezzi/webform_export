@@ -1,5 +1,7 @@
 <?php
 
+define('WEBFORM_EXPORT_INCLUDE_FIELDS',    1);
+
 define('WEBFORM_TMP_DIR',           '/tmp/');
 define('WEBFORM_EXPORT_DIR',        '/var/www/contests/sites/default/files/results/');
 define('WEBFORM_FILE_DATE_FORMAT',  'd-m-Y--H-i-s');
@@ -64,10 +66,70 @@ function _webform_export_submissions_count_optin($node) {
   return $optins;
 }
 
+
+/**
+ * Export all submissions.
+ */
+function _webform_export_submissions($node) {
+  
+  // Construct SQL Query to export all results into a view.
+  $sql =  "CREATE OR REPLACE VIEW webform_export_submissions_view_". $node->nid ." AS ";
+  $sql .= "SELECT d.sid, s.submitted, ";
+  
+  // Look webform components and add into the SQL Query.
+  $components = array();
+  foreach ( _webform_export_get_components($node) as $component ) {
+    $components[] = "GROUP_CONCAT( if( c.form_key = '$component->form_key', d.data, NULL ) ) AS '$component->form_key'";
+  }
+  
+  // Contruct the rest of the SQL Query.
+  $sql .= implode(', ', $components);
+  $sql .= ' FROM {webform_submitted_data} AS d';
+  $sql .= ' LEFT JOIN {webform_component} AS c ON d.cid = c.cid AND d.nid = c.nid';
+  $sql .= ' LEFT JOIN {webform_submissions} AS s ON d.sid = s.sid';
+  $sql .= ' WHERE d.nid = '. $node->nid;
+  $sql .= " GROUP BY d.sid;";
+  
+  // Create view.
+  db_query($sql);
+  
+  // Export all submissions.
+  _webform_export_submissions_all($node);
+  
+  // Drop view.
+  db_query("DROP VIEW webform_export_submissions_view_". $node->nid);
+}
+
+/**
+ * Export all submissions.
+ */
+function _webform_export_submissions_all($node) {
+  
+  // Set filename with !nid_all-!date.csv
+  $file = strtr('!nid_all-!date.csv', array('!nid' => $node->nid, '!date' => date(WEBFORM_FILE_DATE_FORMAT)));
+  
+  $result = db_query("SELECT * FROM webform_export_submissions_view_". $node->nid);
+  
+  header("Content-type: application/octet-stream");
+  header("Content-Disposition: attachment; filename=\"". $file ."\"");
+  
+  $field = TRUE;
+  while ( $row = db_fetch_array($result) ) {
+    
+    // Include field row.
+    if ( $field && WEBFORM_EXPORT_INCLUDE_FIELDS ) {
+      echo "\"". implode('","', array_keys($row)) ."\"\n";
+      $field = FALSE;
+    }
+    
+    echo "\"". implode('","', $row) ."\"\n";
+  }
+}
+
 /**
  * Export submissions.
  */
-function _webform_export_submissions($node) {
+function _xwebform_export_submissions($node) {
   
   // Construct SQL Query to export all results into a view.
   $sql =  "CREATE OR REPLACE VIEW webform_export_submissions_view_". $node->nid ." AS ";
@@ -104,7 +166,7 @@ function _webform_export_submissions($node) {
 /**
  * Export all submissions.
  */
-function _webform_export_submissions_all($node) {
+function _xwebform_export_submissions_all($node) {
   
   // Set filename with !nid_all-!date.csv
   $file = strtr('!nid_all-!date.csv', array('!nid' => $node->nid, '!date' => date(WEBFORM_FILE_DATE_FORMAT)));
@@ -124,7 +186,7 @@ function _webform_export_submissions_all($node) {
 /**
  * Export unique submissions.
  */
-function _webform_export_submissions_unique($node) {
+function _xwebform_export_submissions_unique($node) {
   
   // Set filename with !nid_all-!date.csv
   $file = strtr('!nid_unique-!date.csv', array('!nid' => $node->nid, '!date' => date(WEBFORM_FILE_DATE_FORMAT)));
@@ -145,7 +207,7 @@ function _webform_export_submissions_unique($node) {
 /**
  * Export unique optin submissions.
  */
-function _webform_export_submissions_unique_optin($node) {
+function _xwebform_export_submissions_unique_optin($node) {
   
   // Set filename with !nid_unique_client_optin-!date.csv
   $file = strtr('!nid_unique_client_optin-!date.csv', array('!nid' => $node->nid, '!date' => date(WEBFORM_FILE_DATE_FORMAT)));
@@ -167,7 +229,7 @@ function _webform_export_submissions_unique_optin($node) {
 /**
  * Move an exported file.
  */
-function _webform_export_move_file($node, $source, $dest) {
+function _xwebform_export_move_file($node, $source, $dest) {
   
   // Check if folder exists.
   if ( !file_exists(WEBFORM_EXPORT_DIR . $node->nid) ) {
